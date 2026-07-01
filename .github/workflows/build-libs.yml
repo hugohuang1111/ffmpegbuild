@@ -13,19 +13,10 @@ name: Build FFmpeg + OpenSSL Libraries
 
 on:
   workflow_dispatch:
-    inputs:
-      ffmpeg_version:
-        description: 'FFmpeg version'
-        required: true
-        default: '8.1.2'
-      openssl_version:
-        description: 'OpenSSL version'
-        required: true
-        default: '4.0.1'
 
 env:
-  FFMPEG_VERSION: ${{ inputs.ffmpeg_version || '8.1.2' }}
-  OPENSSL_VERSION: ${{ inputs.openssl_version || '4.0.1' }}
+  FFMPEG_VERSION: "8.1.2"
+  OPENSSL_VERSION: "4.0.1"
   NDK_VERSION: "29.0.14206865"
   TARGET_SDK: 35
   MIN_API: 29
