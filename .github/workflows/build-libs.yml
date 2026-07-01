@@ -115,8 +115,8 @@ jobs:
             --cpu=armv8-a \
             --cc="$TOOLCHAIN/aarch64-linux-android${{ env.MIN_API }}-clang" \
             --cxx="$TOOLCHAIN/aarch64-linux-android${{ env.MIN_API }}-clang++" \
-            --nm="$TOOLCHAIN/aarch64-linux-android-nm" \
-            --strip="$TOOLCHAIN/aarch64-linux-android-strip" \
+            --nm="$TOOLCHAIN/llvm-nm" \
+            --strip="$TOOLCHAIN/llvm-strip" \
             --enable-cross-compile \
             --sysroot="$SYSROOT" \
             --extra-cflags="-I$OPENSSL/include -fPIE -pie" \
@@ -182,8 +182,8 @@ jobs:
             --cpu=armv7-a \
             --cc="$TOOLCHAIN/armv7a-linux-androideabi${{ env.MIN_API }}-clang" \
             --cxx="$TOOLCHAIN/armv7a-linux-androideabi${{ env.MIN_API }}-clang++" \
-            --nm="$TOOLCHAIN/arm-linux-androideabi-nm" \
-            --strip="$TOOLCHAIN/arm-linux-androideabi-strip" \
+            --nm="$TOOLCHAIN/llvm-nm" \
+            --strip="$TOOLCHAIN/llvm-strip" \
             --enable-cross-compile \
             --sysroot="$SYSROOT" \
             --extra-cflags="-mfloat-abi=softfp -march=armv7-a -I$OPENSSL/include -fPIE -pie" \
@@ -325,12 +325,31 @@ jobs:
       - name: Build OpenSSL for iOS simulator
         working-directory: openssl
         run: |
+          # Diagnose: check if xcrun can find the simulator SDK
+          SIM_SDK=$(xcrun --sdk iphonesimulator --show-sdk-path 2>&1)
+          echo "Simulator SDK: $SIM_SDK"
+          xcrun --sdk iphonesimulator --show-sdk-version 2>&1 || echo "No SDK version"
+
           make clean 2>/dev/null || true
-          ./Configure iossim-xcrun \
+
+          # Try iossim-xcrun target first
+          if ./Configure iossim-xcrun \
             shared \
             no-ssl3 no-comp no-hw no-engine \
             --prefix="$GITHUB_WORKSPACE/outputs/ios/simulator" \
-            --openssldir="$GITHUB_WORKSPACE/outputs/ios/simulator"
+            --openssldir="$GITHUB_WORKSPACE/outputs/ios/simulator" 2>&1; then
+            echo "=== iossim-xcrun configure SUCCESS ==="
+          else
+            echo "=== iossim-xcrun FAILED, trying darwin64-x86_64-cc + simulator SDK ==="
+            ./Configure darwin64-x86_64-cc \
+              shared \
+              no-ssl3 no-comp no-hw no-engine \
+              --prefix="$GITHUB_WORKSPACE/outputs/ios/simulator" \
+              --openssldir="$GITHUB_WORKSPACE/outputs/ios/simulator" \
+              CC="xcrun -sdk iphonesimulator clang" \
+              CXX="xcrun -sdk iphonesimulator clang++"
+          fi
+
           make -j"$(sysctl -n hw.ncpu)"
           make install_sw
 
