@@ -253,6 +253,8 @@ jobs:
           chmod +x /usr/local/bin/gas-preprocessor.pl
 
       - name: Install nasm (required by FFmpeg x86_64 assembly)
+        env:
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
         run: brew install nasm
 
       # ----------------------------------------------------------------
@@ -282,7 +284,7 @@ jobs:
         run: |
           make clean 2>/dev/null || true
           ./Configure ios64-xcrun \
-            shared \
+            no-shared \
             no-ssl3 no-comp no-hw no-engine \
             --prefix="$GITHUB_WORKSPACE/outputs/ios/arm64" \
             --openssldir="$GITHUB_WORKSPACE/outputs/ios/arm64"
@@ -309,6 +311,8 @@ jobs:
             --disable-programs \
             --disable-audiotoolbox \
             --disable-doc \
+            --enable-static \
+            --disable-shared \
             --enable-pic \
             --enable-openssl \
             --enable-nonfree \
@@ -337,7 +341,7 @@ jobs:
 
           # Try iossim-xcrun target first
           if ./Configure iossim-xcrun \
-            shared \
+            no-shared \
             no-ssl3 no-comp no-hw no-engine \
             --prefix="$GITHUB_WORKSPACE/outputs/ios/simulator" \
             --openssldir="$GITHUB_WORKSPACE/outputs/ios/simulator" 2>&1; then
@@ -345,7 +349,7 @@ jobs:
           else
             echo "=== iossim-xcrun FAILED, trying darwin64-x86_64-cc + simulator SDK ==="
             ./Configure darwin64-x86_64-cc \
-              shared \
+              no-shared \
               no-ssl3 no-comp no-hw no-engine \
               --prefix="$GITHUB_WORKSPACE/outputs/ios/simulator" \
               --openssldir="$GITHUB_WORKSPACE/outputs/ios/simulator" \
@@ -378,6 +382,8 @@ jobs:
             --disable-programs \
             --disable-audiotoolbox \
             --disable-doc \
+            --enable-static \
+            --disable-shared \
             --enable-pic \
             --enable-openssl \
             --enable-nonfree \
@@ -397,10 +403,10 @@ jobs:
       - name: Package iOS libraries
         run: |
           mkdir -p dist/ios/device/lib dist/ios/simulator/lib
-          # lib output contains both OpenSSL (.dylib) and FFmpeg (.dylib) — same prefix
-          cp -a "$GITHUB_WORKSPACE/outputs/ios/arm64/lib/"*.dylib dist/ios/device/lib/
+          # Static .a libraries for iOS (App Store compatible — .dylib not allowed)
+          cp -a "$GITHUB_WORKSPACE/outputs/ios/arm64/lib/"*.a dist/ios/device/lib/
           cp -a "$GITHUB_WORKSPACE/outputs/ios/arm64/include" dist/ios/device/
-          cp -a "$GITHUB_WORKSPACE/outputs/ios/simulator/lib/"*.dylib dist/ios/simulator/lib/
+          cp -a "$GITHUB_WORKSPACE/outputs/ios/simulator/lib/"*.a dist/ios/simulator/lib/
           cp -a "$GITHUB_WORKSPACE/outputs/ios/simulator/include" dist/ios/simulator/
           echo "=== iOS dist structure ==="
           find dist/ios -type f | sort
