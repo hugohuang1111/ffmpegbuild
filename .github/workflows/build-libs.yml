@@ -339,7 +339,7 @@ jobs:
 
           make clean 2>/dev/null || true
 
-          # Try iossim-xcrun target first
+          # Try iossim-xcrun target first (correct for iOS simulator)
           if ./Configure iossim-xcrun \
             no-shared \
             no-ssl3 no-comp no-hw no-engine \
@@ -347,14 +347,17 @@ jobs:
             --openssldir="$GITHUB_WORKSPACE/outputs/ios/simulator" 2>&1; then
             echo "=== iossim-xcrun configure SUCCESS ==="
           else
-            echo "=== iossim-xcrun FAILED, trying darwin64-x86_64-cc + simulator SDK ==="
-            ./Configure darwin64-x86_64-cc \
+            echo "=== iossim-xcrun FAILED, trying ios64-xcrun with simulator override ==="
+            SIM_SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path 2>&1)
+            ./Configure ios64-xcrun \
               no-shared \
               no-ssl3 no-comp no-hw no-engine \
               --prefix="$GITHUB_WORKSPACE/outputs/ios/simulator" \
               --openssldir="$GITHUB_WORKSPACE/outputs/ios/simulator" \
-              CC="xcrun -sdk iphonesimulator clang" \
-              CXX="xcrun -sdk iphonesimulator clang++"
+              CC="xcrun -sdk iphonesimulator clang -target x86_64-apple-ios14.0-simulator" \
+              CXX="xcrun -sdk iphonesimulator clang++ -target x86_64-apple-ios14.0-simulator" \
+              CFLAGS="-isysroot $SIM_SDK_PATH -mios-simulator-version-min=${{ env.MIN_IOS_SDK }}" \
+              LDFLAGS="-isysroot $SIM_SDK_PATH -mios-simulator-version-min=${{ env.MIN_IOS_SDK }}"
           fi
 
           make -j"$(sysctl -n hw.ncpu)"
