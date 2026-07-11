@@ -282,23 +282,36 @@ jobs:
       - name: Build OpenSSL for iOS arm64
         working-directory: openssl
         run: |
+          set -e
+          DEV_PREFIX="$GITHUB_WORKSPACE/outputs/ios/arm64"
           make clean 2>/dev/null || true
           ./Configure ios64-xcrun \
             no-shared \
             no-ssl3 no-comp no-hw no-engine \
-            --prefix="$GITHUB_WORKSPACE/outputs/ios/arm64" \
-            --openssldir="$GITHUB_WORKSPACE/outputs/ios/arm64"
+            --prefix="$DEV_PREFIX" \
+            --openssldir="$DEV_PREFIX"
           make -j"$(sysctl -n hw.ncpu)"
           make install_sw
+          echo "=== Verifying OpenSSL installation ==="
+          ls -la "$DEV_PREFIX/lib/"*.a 2>&1 || { echo "FATAL: No OpenSSL .a files found!"; exit 1; }
+          echo "=== OpenSSL for iOS device build complete ==="
 
       # ----------------------------------------------------------------
       # 1b. FFmpeg → iOS arm64 (device) — linking OpenSSL
       # ----------------------------------------------------------------
       - name: Build FFmpeg for iOS arm64
         working-directory: ffmpeg
+        env:
+          PKG_CONFIG_PATH: "${{ github.workspace }}/outputs/ios/arm64/lib/pkgconfig"
         run: |
+          set -e
           OPENSSL="$GITHUB_WORKSPACE/outputs/ios/arm64"
           PREFIX="$GITHUB_WORKSPACE/outputs/ios/arm64"
+
+          # Verify OpenSSL is installed before proceeding
+          echo "=== Checking OpenSSL for device ==="
+          ls -la "$OPENSSL/lib/"*.a 2>&1
+          ls -la "$OPENSSL/include/openssl/ssl.h" 2>&1 || { echo "FATAL: OpenSSL not installed at $OPENSSL"; exit 1; }
 
           ./configure \
             --prefix="$PREFIX" \
@@ -332,45 +345,77 @@ jobs:
       - name: Build OpenSSL for iOS simulator
         working-directory: openssl
         run: |
+          set -e  # exit on first error
+          SIM_PREFIX="$GITHUB_WORKSPACE/outputs/ios/simulator"
+
           # Diagnose: check if xcrun can find the simulator SDK
-          SIM_SDK=$(xcrun --sdk iphonesimulator --show-sdk-path 2>&1)
-          echo "Simulator SDK: $SIM_SDK"
+          SIM_SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path 2>&1)
+          echo "Simulator SDK: $SIM_SDK_PATH"
           xcrun --sdk iphonesimulator --show-sdk-version 2>&1 || echo "No SDK version"
 
           make clean 2>/dev/null || true
 
-          # Try iossim-xcrun target first (correct for iOS simulator)
+          # List available targets for debugging
+          echo "=== Available apple/darwin targets ==="
+          ./Configure LIST | grep -iE 'ios|darwin|apple|iphone' || echo "(no matching targets)"
+
+          # Priority 1: iossim-xcrun target (OpenSSL 3.x+)
+          # Priority 2: ios64-xcrun with CC/CXX override for simulator SDK
+          # Priority 3: manual no-asm build with simulator clang
           if ./Configure iossim-xcrun \
             no-shared \
             no-ssl3 no-comp no-hw no-engine \
-            --prefix="$GITHUB_WORKSPACE/outputs/ios/simulator" \
-            --openssldir="$GITHUB_WORKSPACE/outputs/ios/simulator" 2>&1; then
+            --prefix="$SIM_PREFIX" \
+            --openssldir="$SIM_PREFIX" 2>&1; then
             echo "=== iossim-xcrun configure SUCCESS ==="
+          elif ./Configure ios64-xcrun \
+            no-shared \
+            no-ssl3 no-comp no-hw no-engine \
+            --prefix="$SIM_PREFIX" \
+            --openssldir="$SIM_PREFIX" \
+            CC="xcrun -sdk iphonesimulator clang -target x86_64-apple-ios${{ env.MIN_IOS_SDK }}-simulator" \
+            CXX="xcrun -sdk iphonesimulator clang++ -target x86_64-apple-ios${{ env.MIN_IOS_SDK }}-simulator" 2>&1; then
+            echo "=== ios64-xcrun + simulator CC configure SUCCESS ==="
           else
-            echo "=== iossim-xcrun FAILED, trying ios64-xcrun with simulator override ==="
-            SIM_SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path 2>&1)
-            ./Configure ios64-xcrun \
+            echo "=== All named targets FAILED, using generic darwin64 + simulator SDK ==="
+            # Use darwin64-x86_64-cc as base but override CC to simulator
+            ./Configure darwin64-x86_64-cc \
               no-shared \
+              no-asm \
               no-ssl3 no-comp no-hw no-engine \
-              --prefix="$GITHUB_WORKSPACE/outputs/ios/simulator" \
-              --openssldir="$GITHUB_WORKSPACE/outputs/ios/simulator" \
-              CC="xcrun -sdk iphonesimulator clang -target x86_64-apple-ios14.0-simulator" \
-              CXX="xcrun -sdk iphonesimulator clang++ -target x86_64-apple-ios14.0-simulator" \
-              CFLAGS="-isysroot $SIM_SDK_PATH -mios-simulator-version-min=${{ env.MIN_IOS_SDK }}" \
+              --prefix="$SIM_PREFIX" \
+              --openssldir="$SIM_PREFIX" \
+              CC="xcrun -sdk iphonesimulator clang -arch x86_64" \
+              CXX="xcrun -sdk iphonesimulator clang++ -arch x86_64" \
+              CFLAGS="-isysroot $SIM_SDK_PATH -mios-simulator-version-min=${{ env.MIN_IOS_SDK }} -Wno-unused-command-line-argument" \
+              CXXFLAGS="-isysroot $SIM_SDK_PATH -mios-simulator-version-min=${{ env.MIN_IOS_SDK }} -Wno-unused-command-line-argument" \
               LDFLAGS="-isysroot $SIM_SDK_PATH -mios-simulator-version-min=${{ env.MIN_IOS_SDK }}"
           fi
 
           make -j"$(sysctl -n hw.ncpu)"
           make install_sw
 
+          # Verify OpenSSL was actually installed
+          echo "=== Verifying OpenSSL installation ==="
+          ls -la "$SIM_PREFIX/lib/"*.a 2>&1 || { echo "FATAL: No OpenSSL .a files found!"; exit 1; }
+          echo "=== OpenSSL for iOS simulator build complete ==="
+
       # ----------------------------------------------------------------
       # 2b. FFmpeg → iOS simulator (x86_64) — linking OpenSSL
       # ----------------------------------------------------------------
       - name: Build FFmpeg for iOS simulator
         working-directory: ffmpeg
+        env:
+          PKG_CONFIG_PATH: "${{ github.workspace }}/outputs/ios/simulator/lib/pkgconfig"
         run: |
+          set -e
           OPENSSL="$GITHUB_WORKSPACE/outputs/ios/simulator"
           PREFIX="$GITHUB_WORKSPACE/outputs/ios/simulator"
+
+          # Verify OpenSSL is installed before proceeding
+          echo "=== Checking OpenSSL for simulator ==="
+          ls -la "$OPENSSL/lib/"*.a 2>&1
+          ls -la "$OPENSSL/include/openssl/ssl.h" 2>&1 || { echo "FATAL: OpenSSL not installed at $OPENSSL"; exit 1; }
 
           make distclean 2>/dev/null || true
 
