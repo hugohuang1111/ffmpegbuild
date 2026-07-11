@@ -313,6 +313,11 @@ jobs:
           ls -la "$OPENSSL/lib/"*.a 2>&1
           ls -la "$OPENSSL/include/openssl/ssl.h" 2>&1 || { echo "FATAL: OpenSSL not installed at $OPENSSL"; exit 1; }
 
+          # Patch FFmpeg configure: replace DTLS_get_data_mtu with OPENSSL_init_ssl
+          # (more universally available function in OpenSSL 4.x)
+          echo "=== Patching configure for OpenSSL 4.x compatibility ==="
+          sed -i.bak 's/DTLS_get_data_mtu/OPENSSL_init_ssl/g' configure
+
           ./configure \
             --prefix="$PREFIX" \
             --target-os=darwin \
@@ -334,7 +339,8 @@ jobs:
             --enable-protocol=crypto \
             --enable-protocol=tls_openssl \
             --extra-cflags="-arch arm64 -mios-version-min=${{ env.MIN_IOS_SDK }} -I$OPENSSL/include" \
-            --extra-ldflags="-arch arm64 -mios-version-min=${{ env.MIN_IOS_SDK }} -L$OPENSSL/lib -lcrypto -lssl"
+            --extra-ldflags="-arch arm64 -mios-version-min=${{ env.MIN_IOS_SDK }} -L$OPENSSL/lib" \
+            --extra-libs="-lssl -lcrypto"
 
           make -j"$(sysctl -n hw.ncpu)"
           make install
@@ -419,6 +425,11 @@ jobs:
 
           make distclean 2>/dev/null || true
 
+          # Patch FFmpeg configure: replace DTLS_get_data_mtu with OPENSSL_init_ssl
+          # (more universally available function in OpenSSL 4.x)
+          echo "=== Patching configure for OpenSSL 4.x compatibility ==="
+          sed -i.bak 's/DTLS_get_data_mtu/OPENSSL_init_ssl/g' configure
+
           ./configure \
             --prefix="$PREFIX" \
             --target-os=darwin \
@@ -440,7 +451,8 @@ jobs:
             --enable-protocol=crypto \
             --enable-protocol=tls_openssl \
             --extra-cflags="-arch x86_64 -mios-simulator-version-min=${{ env.MIN_IOS_SDK }} -I$OPENSSL/include" \
-            --extra-ldflags="-arch x86_64 -mios-simulator-version-min=${{ env.MIN_IOS_SDK }} -L$OPENSSL/lib -lcrypto -lssl"
+            --extra-ldflags="-arch x86_64 -mios-simulator-version-min=${{ env.MIN_IOS_SDK }} -L$OPENSSL/lib" \
+            --extra-libs="-lssl -lcrypto"
 
           make -j"$(sysctl -n hw.ncpu)"
           make install
